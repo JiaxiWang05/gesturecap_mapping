@@ -101,7 +101,7 @@ cd gesturecap_mapping
 Once everything is set up, you can start the system by running the Python script.
    
 ```bash
-python src/python/hand_pose_detector.py
+python src/python/Realtime_Hand_Coordinate.py
 
 ```
 This will launch the hand gesture control system, with your webcam tracking hand movements and sending OSC messages to control MAX Dials. 
