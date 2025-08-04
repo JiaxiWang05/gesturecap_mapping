@@ -1,64 +1,121 @@
+from hand_pose_detector import HandPoseDetector
 import cv2
-import mediapipe as mp
+from pythonosc import udp_client
+import time
+import math
 
-class HandPoseDetector:
-    def __init__(self):
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands()
+# Initialize hand pose detector and video capture
+detector = HandPoseDetector()
+cap = cv2.VideoCapture(0)
+# cap = cv2.VideoCapture("/dev/video2")
 
-    def detect_hand_pose(self, image):
-        # Convert the image to RGB
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+# Initialize OSC client
+osc_ip = "127.0.0.1"
+osc_port = 11111
+client = udp_client.SimpleUDPClient(osc_ip, osc_port)
 
-        # Process the image using MediaPipe Hands
-        results = self.hands.process(image_rgb)
+fps = 200
+delay = int(1000 / fps)
 
-        output = []
-        if results.multi_hand_landmarks and results.multi_handedness:
-            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
-                # Get the hand label ("Left" or "Right")
-                hand = {}
-                label = handedness.classification[0].label
-                # Draw landmarks on the image
-                for landmark in hand_landmarks.landmark:
-                    x = int(landmark.x * image.shape[1])
-                    y = int(landmark.y * image.shape[0])
-                    z = int(landmark.z * image.shape[1])
-                    cv2.circle(image, (x, y), 5, (0, 255, 0), -1)
-                # Attach label to the hand landmarks object
-                hand["label"] = label
-                hand["landmarks"] = hand_landmarks
-                output.append(hand)
-        return output
+state = 0  # For left hand tap logic
+counter = 0
 
-def main():
-    # Initialize the hand pose detector
-    hand_pose_detector = HandPoseDetector()
+total_latency_array = []
+frame_latency_array = []
+processing_latency_array = []
+audio_latency_array = []
 
-    # Open a video capture stream (you can replace this with your own image or video input)
-    cap = cv2.VideoCapture(1)
+while cap.isOpened():
+    total_start_time = time.time()
+    
+    # Frame capture time
+    frame_start_time = time.time()
+    ret, frame = cap.read()
+    frame = cv2.flip(frame, 1)
+    frame_end_time = time.time()
+    frame_input_latency = (frame_end_time - frame_start_time) * 1000
 
-    while cap.isOpened():
-        # Read a frame from the video stream
-        ret, frame = cap.read()
+    if not ret:
+        break
 
-        # Break the loop if the video stream ends
-        if not ret:
-            break
+    # Hand pose detection time
+    process_start_time = time.time()
+    hands = detector.detect_hand_pose(frame)
+    process_end_time = time.time()
+    processing_latency = (process_end_time - process_start_time) * 1000
 
-        # Detect hand pose in the frame
-        frame_with_landmarks = hand_pose_detector.detect_hand_pose(frame)
+    left_hand_tapped = False
 
-        # Display the frame with hand landmarks
-        cv2.imshow("Hand Pose Detector", frame_with_landmarks)
+    if hands:
+        for hand in hands:
+            landmarks = hand["landmarks"].landmark
 
-        # Break the loop if the 'q' key is pressed
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            # Use the label provided by the detector ("Left" or "Right")
+            if "label" in hand:
+                hand_label = hand["label"].lower()
+                # print("detected handedness")
+            else:
+                continue
+            volume = 0
+            if hand_label == "left":
+                left_index_pos = landmarks[8]
+                left_thumb_pos = landmarks[4]
+                distance = math.dist([left_index_pos.x, left_index_pos.y],
+                                     [left_thumb_pos.x, left_thumb_pos.y])
+                # Left hand tap logic
+                if distance >= 0.08 and state == 1:
+                    state = 0
+                elif distance < 0.08 and state == 0:
+                    state = 1
+                
+                    left_hand_tapped = True
+                    counter += 1
+                    print("Left hand counter:", counter)
+            elif hand_label == "right":
+                right_index_pos = landmarks[8]
+                right_thumb_pos = landmarks[4]
+                distance = math.dist([right_index_pos.x, right_index_pos.y],
+                                     [right_thumb_pos.x, right_thumb_pos.y])
+                # Right hand logic remains the same
+                if distance < 0.1:
+                    play_start_time = time.time()
+                    # freq = 100000 / ((right_index_pos.x ** 2) * 1000 + 100)
+                    # freq = 1000 / ((right_index_pos.x ** 2) * 1000 + 100)
+                    freq = right_index_pos.x
+                    min_val = -2.0
+                    max_val = 7
+                    mapped_freq = min_val + (max_val - min_val) * freq
 
-    # Release the video capture object and close all windows
-    cap.release()
-    cv2.destroyAllWindows()
+                    # print(freq)
+                    volume = right_index_pos.y
+                    min_c = 1000
+                    max_c = 7000
+                    mapped_volume = min_c + (max_c - min_c) * volume
 
-if __name__ == "__main__":
-    main()
+                    client.send_message("/q", mapped_freq)
+                    client.send_message("/c", mapped_volume)
+
+                    play_end_time = time.time()
+                    audio_output_latency = (play_end_time - play_start_time) * 1000
+
+                    total_latency = (play_end_time - total_start_time) * 1000
+                    total_latency_array.append(total_latency)
+                    frame_latency_array.append(frame_input_latency)
+                    processing_latency_array.append(processing_latency)
+                    audio_latency_array.append(audio_output_latency)
+
+    trig_val = 0
+
+    # Send a single OSC trigger for left hand tap
+    if left_hand_tapped:
+        trig_val = 1
+        client.send_message("/trigger", trig_val)
+    # print(trig_val)
+
+    cv2.imshow("Hand Pose", frame)
+
+    if cv2.waitKey(delay) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
