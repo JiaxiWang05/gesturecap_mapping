@@ -1,5 +1,17 @@
 Here is the my version of custom-built DJ template for Ableton Live.  
 
+ 
+
+### Demo Video
+
+Here is the demo video showcasing the system in action:
+
+[![Watch the demo on YouTube](https://img.youtube.com/vi/GaFYIN7mUcI/maxresdefault.jpg)](https://www.youtube.com/watch?v=GaFYIN7mUcI)
+
+ 
+[Watch demo on YouTube](https://www.youtube.com/watch?v=another-video-id)
+
+
 ## **Part 1: Session Preparation & Track Importation**
 
 Follow these correct setup to ensure session is configured.
@@ -14,7 +26,7 @@ When the project opens, you'll be in Ableton's **Session View**.
    
 ### **Step 3: The Critical Task - Importing Your Audio**
 
-1.  **Prepare Your Files:** Have the folder containing five audio stems (bass.wav, drum.wav, etc.) open and visible on screen.
+1.  **Prepare Files:** Have the folder containing five audio stems (bass.wav, drum.wav, etc.) open and visible on screen.
 
 2.  **Drag and Drop with Precision:**
     *   Click on **bass** audio file, hold the mouse button down, and drag it from your folder.
